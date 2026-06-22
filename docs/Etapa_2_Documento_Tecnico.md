@@ -178,48 +178,100 @@ ON orders USING BRIN (order_purchase_timestamp)
 WITH (pages_per_range = 128);
 ```
 
-**Evidencia BRIN — EXPLAIN ANALYZE:**
+**Evidencia particionamiento — EXPLAIN ANALYZE real:**
 
-| Métrica | Sin índice (Seq Scan) | Con índice BRIN (Bitmap Index Scan) |
-|---|---|---|
-| Stage de acceso | Seq Scan | Bitmap Index Scan |
-| Tipo de índice | N/A | BRIN |
-| Particiones escaneadas | 4/4 | 1-2 particiones relevantes |
-| Costo estimado | Alto (full scan) | Bajo (rango delimitado) |
-| Tamaño vs B-tree | N/A | ~1000× más pequeño |
+| Escenario | Tabla plana (`orders`) | Tabla particionada (`orders_part`) | Mejora |
+|---|---|---|---|
+| Barrido rango jun-2017 | Index Only Scan — **748.817 ms** | Seq Scan 1 partición — **2.375 ms** | **×315 más rápido** |
+| Particiones escaneadas | 1 (toda la tabla) | 1/27 (solo `orders_part_2017_06`) | Partition pruning activo |
+| Buffers leídos | 1,574 | 158 | −90% lecturas |
 
-### 3.4 Consultas Optimizadas
+*Fuente: `postgresql/optimizaciones/results/04_partitioning.txt` — equipo Ecommify*
 
-**Consulta de revenue por categoría con JOIN:**
+### 3.4 Optimizaciones de Queries — Datos Reales
+
+Los siguientes resultados fueron obtenidos con `EXPLAIN (ANALYZE, BUFFERS)` sobre la instancia real de Supabase.
+
+#### OPT-1: Subqueries correlacionadas → JOIN + GROUP BY
+
 ```sql
-SELECT 
-    p.product_category_name,
-    COUNT(*) AS total_orders,
-    ROUND(SUM(oi.price)::numeric, 2) AS revenue,
-    ROUND(AVG(oi.price)::numeric, 2) AS avg_price
-FROM order_items oi
-JOIN products p ON oi.product_id = p.product_id
-JOIN orders o ON oi.order_id = o.order_id
-WHERE o.order_purchase_timestamp BETWEEN '2017-01-01' AND '2017-12-31'
-GROUP BY p.product_category_name
-ORDER BY revenue DESC
-LIMIT 10;
+-- ANTES (subquery por cada seller): 1,855 ms
+SELECT s.seller_id, (SELECT COUNT(*) FROM order_items i WHERE i.seller_id = s.seller_id) ...
+
+-- DESPUÉS (single JOIN): 39 ms
+SELECT s.seller_id, COUNT(i.order_id), SUM(i.price)
+FROM sellers s LEFT JOIN order_items i ON i.seller_id = s.seller_id
+GROUP BY s.seller_id
 ```
 
-**Consulta Haversine — distancia geoespacial:**
+| Métrica | ANTES | DESPUÉS | Mejora |
+|---|---|---|---|
+| Execution Time | **1,855.952 ms** | **39.713 ms** | **×46.7 (−97.9%)** |
+| Plan | CTE Scan + SubPlan loops | GroupAggregate + Nested Loop | JOINs eliminan subplan |
+
+#### OPT-2: Función en columna → rango sargable
+
 ```sql
-SELECT 
-    s.seller_city,
-    c.customer_city,
-    ST_Distance(
-        ST_GeogFromText('SRID=4326;POINT(' || s.seller_lng || ' ' || s.seller_lat || ')'),
-        ST_GeogFromText('SRID=4326;POINT(' || c.customer_lng || ' ' || c.customer_lat || ')')
-    ) / 1000 AS distancia_km
-FROM sellers s
-JOIN orders o ON o.seller_id = s.seller_id
-JOIN customers c ON o.customer_id = c.customer_id
-LIMIT 100;
+-- ANTES (date_trunc bloquea el índice): 1,022 ms
+WHERE date_trunc('day', order_purchase_timestamp) = '2018-05-10'
+
+-- DESPUÉS (rango explícito, usa índice): 535 ms
+WHERE order_purchase_timestamp >= '2018-05-10' AND order_purchase_timestamp < '2018-05-11'
 ```
+
+| Métrica | ANTES | DESPUÉS | Mejora |
+|---|---|---|---|
+| Execution Time | **1,022.989 ms** (Seq Scan) | **535.048 ms** (Index Scan) | **−47.7%** |
+
+#### OPT-3: NOT IN subquery → NOT EXISTS (anti-join)
+
+```sql
+-- ANTES (materializa 91,677 filas en memoria): 3,195 ms
+WHERE order_id NOT IN (SELECT order_id FROM order_reviews)
+
+-- DESPUÉS (Hash Right Anti Join): 35 ms
+WHERE NOT EXISTS (SELECT 1 FROM order_reviews r WHERE r.order_id = o.order_id)
+```
+
+| Métrica | ANTES | DESPUÉS | Mejora |
+|---|---|---|---|
+| Execution Time | **3,195.639 ms** | **35.422 ms** | **×90.2 (−98.9%)** |
+| Plan | Index Scan + SubPlan Materialize | Hash Right Anti Join | Elimina materialización |
+
+#### OPT-4: Paginación con OFFSET → keyset pagination
+
+```sql
+-- ANTES (recorre 5,000 filas para saltar): 290 ms
+SELECT * FROM products ORDER BY product_id LIMIT 24 OFFSET 5000
+
+-- DESPUÉS (usa la clave del último registro): 0.085 ms
+SELECT * FROM products WHERE product_id > 'a046d4d3...' ORDER BY product_id LIMIT 24
+```
+
+| Métrica | ANTES | DESPUÉS | Mejora |
+|---|---|---|---|
+| Execution Time | **290.068 ms** | **0.085 ms** | **×3,412 (−99.97%)** |
+| Buffers leídos | 5,056 | 26 | −99.5% |
+
+### 3.5 Evidencia de Índices B-tree — Datos Reales
+
+#### IDX-1: Historial de cliente (`idx_customers_unique_id` + `idx_orders_customer`)
+
+| Métrica | Sin índices | Con índices | Mejora |
+|---|---|---|---|
+| Execution Time | **882.947 ms** (Parallel Seq Scan) | **4.737 ms** (Index Scan) | **×186 (−99.5%)** |
+| Workers usados | 2 (paralelo) | 0 (índice directo) | Sin overhead paralelo |
+| Tamaño índice customer | — | 5,288 kB | — |
+| Tamaño índice orders_fk | — | 8,672 kB | — |
+
+#### IDX-2: Ítems recientes por vendedor (`idx_order_items_seller_ts`)
+
+| Métrica | Sin índice | Con índice | Mejora |
+|---|---|---|---|
+| Execution Time | **1,206.577 ms** (Parallel Seq Scan) | **11.064 ms** (Index Scan) | **×109 (−99.1%)** |
+| Plan | Gather Merge + Sort + Parallel Seq Scan | Nested Loop + Index Scan | Evita sort explícito |
+
+*Fuente: `postgresql/optimizaciones/results/03_indexes.txt` — equipo Ecommify*
 
 ---
 
@@ -517,15 +569,19 @@ sh.shardCollection("ecommify_analytics.resumen_reviews", {
 - P99 elevado en 1 usuario (1,065 ms): costo de TLS handshake en primera conexión en frío
 - **0% de errores** en todos los niveles — M0 gestiona la cola sin rechazar conexiones
 
-### 5.3 Resultados PostgreSQL / Supabase
+### 5.3 Resultados PostgreSQL — Datos Reales de EXPLAIN ANALYZE
 
-*Evidencia basada en EXPLAIN ANALYZE de Guía 5 (conexión directa al pooler presentó restricciones de autenticación en el tier free durante las pruebas de carga automatizadas).*
+*Fuente: `postgresql/optimizaciones/results/` — mediciones reales en Supabase del equipo Ecommify.*
 
-| Query | Sin índice | Con índice | Mejora |
-|---|---|---|---|
-| Filtro por fecha (`orders_by_period`) | Seq Scan — ~340 ms | Bitmap Index Scan BRIN — ~45 ms | **87% más rápido** |
-| Búsqueda texto (`review_message ILIKE`) | Seq Scan — ~340 ms | GIN trgm — ~12 ms | **96% más rápido** |
-| Revenue por categoría (JOIN) | Hash Join sin estadísticas — ~280 ms | Hash Join con índices — ~180 ms | **36% más rápido** |
+| Optimización | Query | Sin optimización | Con optimización | Mejora |
+|---|---|---|---|---|
+| JOIN vs subqueries | Revenue por seller | **1,855.952 ms** | **39.713 ms** | **×46.7** |
+| Rango sargable | Órdenes por día | **1,022.989 ms** | **535.048 ms** | **×1.9** |
+| NOT EXISTS anti-join | Órdenes sin review | **3,195.639 ms** | **35.422 ms** | **×90.2** |
+| Keyset pagination | Productos pág. 208 | **290.068 ms** | **0.085 ms** | **×3,412** |
+| Índice B-tree compuesto | Historial de cliente | **882.947 ms** | **4.737 ms** | **×186** |
+| Índice B-tree compuesto | Ítems por vendedor | **1,206.577 ms** | **11.064 ms** | **×109** |
+| Particionamiento RANGE | Barrido mensual | **748.817 ms** | **2.375 ms** | **×315** |
 
 ### 5.4 Análisis de Degradación
 
