@@ -1,0 +1,156 @@
+{
+  "explainVersion": "1",
+  "queryPlanner": {
+    "namespace": "ecommify_analytics.catalogo_enriquecido",
+    "parsedQuery": {
+      "$and": [
+        {
+          "category_translations.en": {
+            "$eq": "computers_accessories"
+          }
+        },
+        {
+          "computed_metrics.average_rating": {
+            "$gte": 4.0
+          }
+        }
+      ]
+    },
+    "indexFilterSet": false,
+    "queryHash": "673F9E45",
+    "planCacheShapeHash": "673F9E45",
+    "planCacheKey": "AF65F7E1",
+    "optimizationTimeMillis": 0,
+    "maxIndexedOrSolutionsReached": false,
+    "maxIndexedAndSolutionsReached": false,
+    "maxScansToExplodeReached": false,
+    "prunedSimilarIndexes": false,
+    "winningPlan": {
+      "isCached": false,
+      "stage": "SORT",
+      "sortPattern": {
+        "computed_metrics.avg_price": 1
+      },
+      "memLimit": 33554432,
+      "type": "simple",
+      "inputStage": {
+        "stage": "COLLSCAN",
+        "filter": {
+          "$and": [
+            {
+              "category_translations.en": {
+                "$eq": "computers_accessories"
+              }
+            },
+            {
+              "computed_metrics.average_rating": {
+                "$gte": 4.0
+              }
+            }
+          ]
+        },
+        "direction": "forward"
+      }
+    },
+    "rejectedPlans": []
+  },
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 1102,
+    "executionTimeMillis": 24,
+    "totalKeysExamined": 0,
+    "totalDocsExamined": 32951,
+    "executionStages": {
+      "isCached": false,
+      "stage": "SORT",
+      "nReturned": 1102,
+      "executionTimeMillisEstimate": 23,
+      "works": 34055,
+      "advanced": 1102,
+      "needTime": 32952,
+      "needYield": 0,
+      "saveState": 1,
+      "restoreState": 1,
+      "isEOF": 1,
+      "sortPattern": {
+        "computed_metrics.avg_price": 1
+      },
+      "memLimit": 33554432,
+      "type": "simple",
+      "totalDataSizeSorted": 505818,
+      "usedDisk": false,
+      "spills": 0,
+      "spilledDataStorageSize": 0,
+      "inputStage": {
+        "stage": "COLLSCAN",
+        "filter": {
+          "$and": [
+            {
+              "category_translations.en": {
+                "$eq": "computers_accessories"
+              }
+            },
+            {
+              "computed_metrics.average_rating": {
+                "$gte": 4.0
+              }
+            }
+          ]
+        },
+        "nReturned": 1102,
+        "executionTimeMillisEstimate": 22,
+        "works": 32952,
+        "advanced": 1102,
+        "needTime": 31849,
+        "needYield": 0,
+        "saveState": 1,
+        "restoreState": 1,
+        "isEOF": 1,
+        "direction": "forward",
+        "docsExamined": 32951
+      }
+    },
+    "allPlansExecution": []
+  },
+  "queryShapeHash": "EA7F25570E109784AAEC25D4F6BBBAB76AD2811C9FD4E5B20CFC5973EDED5745",
+  "command": {
+    "find": "catalogo_enriquecido",
+    "filter": {
+      "category_translations.en": "computers_accessories",
+      "computed_metrics.average_rating": {
+        "$gte": 4.0
+      }
+    },
+    "sort": {
+      "computed_metrics.avg_price": 1
+    },
+    "$db": "ecommify_analytics"
+  },
+  "serverInfo": {
+    "host": "ac-ifxbds3-shard-00-02.dbpeigv.mongodb.net",
+    "port": 27017,
+    "version": "8.0.26",
+    "gitVersion": "a2c24805265db119cc39f2f54e067b4294a4ddd2"
+  },
+  "serverParameters": {
+    "internalQueryFacetBufferSizeBytes": 104857600,
+    "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+    "internalLookupStageIntermediateDocumentMaxSizeBytes": 16793600,
+    "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+    "internalQueryMaxBlockingSortMemoryUsageBytes": 33554432,
+    "internalQueryProhibitBlockingMergeOnMongoS": 0,
+    "internalQueryMaxAddToSetBytes": 104857600,
+    "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+    "internalQueryFrameworkControl": "trySbeRestricted",
+    "internalQueryPlannerIgnoreIndexWithCollationForRegex": 1
+  },
+  "ok": 1.0,
+  "$clusterTime": {
+    "clusterTime": "Timestamp(1782087585, 48)",
+    "signature": {
+      "hash": "b'X\\x16\\xf9\\xa0\\xa0/|\\xb2h%\\xb7j\\xb9\\xd9\\x8c\\xd6\\xb4\\x98\\x92J'",
+      "keyId": 7594470488294817794
+    }
+  },
+  "operationTime": "Timestamp(1782087585, 48)"
+}

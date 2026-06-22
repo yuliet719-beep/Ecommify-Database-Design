@@ -1,0 +1,361 @@
+{
+  "explainVersion": "1",
+  "queryPlanner": {
+    "namespace": "ecommify_analytics.catalogo_enriquecido",
+    "parsedQuery": {
+      "$and": [
+        {
+          "category_translations.en": {
+            "$eq": "computers_accessories"
+          }
+        },
+        {
+          "computed_metrics.average_rating": {
+            "$gte": 4.0
+          }
+        }
+      ]
+    },
+    "indexFilterSet": false,
+    "queryHash": "673F9E45",
+    "planCacheShapeHash": "673F9E45",
+    "planCacheKey": "B3189C5D",
+    "optimizationTimeMillis": 3,
+    "maxIndexedOrSolutionsReached": false,
+    "maxIndexedAndSolutionsReached": false,
+    "maxScansToExplodeReached": false,
+    "prunedSimilarIndexes": false,
+    "winningPlan": {
+      "isCached": false,
+      "stage": "FETCH",
+      "inputStage": {
+        "stage": "IXSCAN",
+        "keyPattern": {
+          "category_translations.en": 1,
+          "computed_metrics.avg_price": 1,
+          "computed_metrics.average_rating": 1
+        },
+        "indexName": "idx_category_price_rating_ESR",
+        "isMultiKey": false,
+        "multiKeyPaths": {
+          "category_translations.en": [],
+          "computed_metrics.avg_price": [],
+          "computed_metrics.average_rating": []
+        },
+        "isUnique": false,
+        "isSparse": false,
+        "isPartial": false,
+        "indexVersion": 2,
+        "direction": "forward",
+        "indexBounds": {
+          "category_translations.en": [
+            "[\"computers_accessories\", \"computers_accessories\"]"
+          ],
+          "computed_metrics.avg_price": [
+            "[MinKey, MaxKey]"
+          ],
+          "computed_metrics.average_rating": [
+            "[4.0, inf.0]"
+          ]
+        }
+      }
+    },
+    "rejectedPlans": [
+      {
+        "isCached": false,
+        "stage": "SORT",
+        "sortPattern": {
+          "computed_metrics.avg_price": 1
+        },
+        "memLimit": 33554432,
+        "type": "simple",
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "category_translations.en": {
+              "$eq": "computers_accessories"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "computed_metrics.average_rating": -1
+            },
+            "indexName": "idx_high_rating_partial",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "computed_metrics.average_rating": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": true,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "computed_metrics.average_rating": [
+                "[inf.0, 4.0]"
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 1102,
+    "executionTimeMillis": 6,
+    "totalKeysExamined": 1511,
+    "totalDocsExamined": 1102,
+    "executionStages": {
+      "isCached": false,
+      "stage": "FETCH",
+      "nReturned": 1102,
+      "executionTimeMillisEstimate": 6,
+      "works": 1511,
+      "advanced": 1102,
+      "needTime": 408,
+      "needYield": 0,
+      "saveState": 0,
+      "restoreState": 0,
+      "isEOF": 1,
+      "docsExamined": 1102,
+      "alreadyHasObj": 0,
+      "inputStage": {
+        "stage": "IXSCAN",
+        "nReturned": 1102,
+        "executionTimeMillisEstimate": 5,
+        "works": 1511,
+        "advanced": 1102,
+        "needTime": 408,
+        "needYield": 0,
+        "saveState": 0,
+        "restoreState": 0,
+        "isEOF": 1,
+        "keyPattern": {
+          "category_translations.en": 1,
+          "computed_metrics.avg_price": 1,
+          "computed_metrics.average_rating": 1
+        },
+        "indexName": "idx_category_price_rating_ESR",
+        "isMultiKey": false,
+        "multiKeyPaths": {
+          "category_translations.en": [],
+          "computed_metrics.avg_price": [],
+          "computed_metrics.average_rating": []
+        },
+        "isUnique": false,
+        "isSparse": false,
+        "isPartial": false,
+        "indexVersion": 2,
+        "direction": "forward",
+        "indexBounds": {
+          "category_translations.en": [
+            "[\"computers_accessories\", \"computers_accessories\"]"
+          ],
+          "computed_metrics.avg_price": [
+            "[MinKey, MaxKey]"
+          ],
+          "computed_metrics.average_rating": [
+            "[4.0, inf.0]"
+          ]
+        },
+        "keysExamined": 1511,
+        "seeks": 409,
+        "dupsTested": 0,
+        "dupsDropped": 0
+      }
+    },
+    "allPlansExecution": [
+      {
+        "nReturned": 101,
+        "executionTimeMillisEstimate": 1,
+        "totalKeysExamined": 132,
+        "totalDocsExamined": 101,
+        "score": 1.7653515151515151,
+        "executionStages": {
+          "isCached": false,
+          "stage": "FETCH",
+          "nReturned": 101,
+          "executionTimeMillisEstimate": 1,
+          "works": 132,
+          "advanced": 101,
+          "needTime": 31,
+          "needYield": 0,
+          "saveState": 0,
+          "restoreState": 0,
+          "isEOF": 0,
+          "docsExamined": 101,
+          "alreadyHasObj": 0,
+          "inputStage": {
+            "stage": "IXSCAN",
+            "nReturned": 101,
+            "executionTimeMillisEstimate": 1,
+            "works": 132,
+            "advanced": 101,
+            "needTime": 31,
+            "needYield": 0,
+            "saveState": 0,
+            "restoreState": 0,
+            "isEOF": 0,
+            "keyPattern": {
+              "category_translations.en": 1,
+              "computed_metrics.avg_price": 1,
+              "computed_metrics.average_rating": 1
+            },
+            "indexName": "idx_category_price_rating_ESR",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "category_translations.en": [],
+              "computed_metrics.avg_price": [],
+              "computed_metrics.average_rating": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "category_translations.en": [
+                "[\"computers_accessories\", \"computers_accessories\"]"
+              ],
+              "computed_metrics.avg_price": [
+                "[MinKey, MaxKey]"
+              ],
+              "computed_metrics.average_rating": [
+                "[4.0, inf.0]"
+              ]
+            },
+            "keysExamined": 132,
+            "seeks": 32,
+            "dupsTested": 0,
+            "dupsDropped": 0
+          }
+        }
+      },
+      {
+        "nReturned": 0,
+        "executionTimeMillisEstimate": 0,
+        "totalKeysExamined": 132,
+        "totalDocsExamined": 132,
+        "score": 1.0001,
+        "executionStages": {
+          "isCached": false,
+          "stage": "SORT",
+          "nReturned": 0,
+          "executionTimeMillisEstimate": 0,
+          "works": 132,
+          "advanced": 0,
+          "needTime": 132,
+          "needYield": 0,
+          "saveState": 1,
+          "restoreState": 0,
+          "isEOF": 0,
+          "sortPattern": {
+            "computed_metrics.avg_price": 1
+          },
+          "memLimit": 33554432,
+          "type": "simple",
+          "totalDataSizeSorted": 0,
+          "usedDisk": false,
+          "spills": 0,
+          "spilledDataStorageSize": 0,
+          "inputStage": {
+            "stage": "FETCH",
+            "filter": {
+              "category_translations.en": {
+                "$eq": "computers_accessories"
+              }
+            },
+            "nReturned": 6,
+            "executionTimeMillisEstimate": 0,
+            "works": 132,
+            "advanced": 6,
+            "needTime": 126,
+            "needYield": 0,
+            "saveState": 1,
+            "restoreState": 0,
+            "isEOF": 0,
+            "docsExamined": 132,
+            "alreadyHasObj": 0,
+            "inputStage": {
+              "stage": "IXSCAN",
+              "nReturned": 132,
+              "executionTimeMillisEstimate": 0,
+              "works": 132,
+              "advanced": 132,
+              "needTime": 0,
+              "needYield": 0,
+              "saveState": 1,
+              "restoreState": 0,
+              "isEOF": 0,
+              "keyPattern": {
+                "computed_metrics.average_rating": -1
+              },
+              "indexName": "idx_high_rating_partial",
+              "isMultiKey": false,
+              "multiKeyPaths": {
+                "computed_metrics.average_rating": []
+              },
+              "isUnique": false,
+              "isSparse": false,
+              "isPartial": true,
+              "indexVersion": 2,
+              "direction": "forward",
+              "indexBounds": {
+                "computed_metrics.average_rating": [
+                  "[inf.0, 4.0]"
+                ]
+              },
+              "keysExamined": 132,
+              "seeks": 1,
+              "dupsTested": 0,
+              "dupsDropped": 0
+            }
+          }
+        }
+      }
+    ]
+  },
+  "queryShapeHash": "EA7F25570E109784AAEC25D4F6BBBAB76AD2811C9FD4E5B20CFC5973EDED5745",
+  "command": {
+    "find": "catalogo_enriquecido",
+    "filter": {
+      "category_translations.en": "computers_accessories",
+      "computed_metrics.average_rating": {
+        "$gte": 4.0
+      }
+    },
+    "sort": {
+      "computed_metrics.avg_price": 1
+    },
+    "$db": "ecommify_analytics"
+  },
+  "serverInfo": {
+    "host": "ac-ifxbds3-shard-00-02.dbpeigv.mongodb.net",
+    "port": 27017,
+    "version": "8.0.26",
+    "gitVersion": "a2c24805265db119cc39f2f54e067b4294a4ddd2"
+  },
+  "serverParameters": {
+    "internalQueryFacetBufferSizeBytes": 104857600,
+    "internalQueryFacetMaxOutputDocSizeBytes": 104857600,
+    "internalLookupStageIntermediateDocumentMaxSizeBytes": 16793600,
+    "internalDocumentSourceGroupMaxMemoryBytes": 104857600,
+    "internalQueryMaxBlockingSortMemoryUsageBytes": 33554432,
+    "internalQueryProhibitBlockingMergeOnMongoS": 0,
+    "internalQueryMaxAddToSetBytes": 104857600,
+    "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": 104857600,
+    "internalQueryFrameworkControl": "trySbeRestricted",
+    "internalQueryPlannerIgnoreIndexWithCollationForRegex": 1
+  },
+  "ok": 1.0,
+  "$clusterTime": {
+    "clusterTime": "Timestamp(1782087587, 33)",
+    "signature": {
+      "hash": "b\"ep\\xa7\\x01\\xfc\\xdd\\x8ch\\x8e'\\xd2\\x94y n\\x869\\xfa\\xde\\xf0\"",
+      "keyId": 7594470488294817794
+    }
+  },
+  "operationTime": "Timestamp(1782087587, 33)"
+}

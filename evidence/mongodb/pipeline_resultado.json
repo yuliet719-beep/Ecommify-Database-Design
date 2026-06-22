@@ -1,0 +1,114 @@
+{
+  "top_10_categorias": [
+    {
+      "categoria": "bed_bath_table",
+      "productos": 3029,
+      "unidades": 11115,
+      "precio_prom": 107.46,
+      "rating_prom": 3.84,
+      "score": 1188.3
+    },
+    {
+      "categoria": "health_beauty",
+      "productos": 2444,
+      "unidades": 9670,
+      "precio_prom": 146.78,
+      "rating_prom": 4.17,
+      "score": 1050.32
+    },
+    {
+      "categoria": "sports_leisure",
+      "productos": 2867,
+      "unidades": 8641,
+      "precio_prom": 135.44,
+      "rating_prom": 4.11,
+      "score": 946.23
+    },
+    {
+      "categoria": "furniture_decor",
+      "productos": 2657,
+      "unidades": 8334,
+      "precio_prom": 103.23,
+      "rating_prom": 3.88,
+      "score": 910.91
+    },
+    {
+      "categoria": "computers_accessories",
+      "productos": 1639,
+      "unidades": 7827,
+      "precio_prom": 156.03,
+      "rating_prom": 3.93,
+      "score": 861.35
+    },
+    {
+      "categoria": "housewares",
+      "productos": 2335,
+      "unidades": 6964,
+      "precio_prom": 98.56,
+      "rating_prom": 4.06,
+      "score": 777.59
+    },
+    {
+      "categoria": "watches_gifts",
+      "productos": 1329,
+      "unidades": 5991,
+      "precio_prom": 335.91,
+      "rating_prom": 4.14,
+      "score": 681.94
+    },
+    {
+      "categoria": "telephony",
+      "productos": 1134,
+      "unidades": 4545,
+      "precio_prom": 83.83,
+      "rating_prom": 3.92,
+      "score": 532.86
+    },
+    {
+      "categoria": "garden_tools",
+      "productos": 753,
+      "unidades": 4347,
+      "precio_prom": 222.61,
+      "rating_prom": 4.08,
+      "score": 516.36
+    },
+    {
+      "categoria": "auto",
+      "productos": 1900,
+      "unidades": 4235,
+      "precio_prom": 152.58,
+      "rating_prom": 4.02,
+      "score": 503.97
+    }
+  ],
+  "estadisticas_globales": [
+    {
+      "total_categorias": 71,
+      "precio_global_avg": 170.09513241827372,
+      "rating_global_avg": 4.019490608443884,
+      "total_unidades": 111023
+    }
+  ],
+  "categorias_bajo_rendimiento": [
+    {
+      "categoria": "diapers_and_hygiene",
+      "score": 77.98,
+      "rating_prom": 3.7
+    },
+    {
+      "categoria": "fashio_female_clothing",
+      "score": 75.3,
+      "rating_prom": 3.52
+    },
+    {
+      "categoria": "furniture_mattress_and_upholstery",
+      "score": 68.18,
+      "rating_prom": 3.22
+    },
+    {
+      "categoria": "security_and_services",
+      "score": 50.2,
+      "rating_prom": 2.5
+    }
+  ]
+}
