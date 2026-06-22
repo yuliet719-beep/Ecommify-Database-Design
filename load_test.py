@@ -22,7 +22,7 @@ import psycopg2.pool
 # CONFIGURACIÓN
 # ================================================================
 MONGODB_URI   = "mongodb+srv://yuliet719_db_user:9MBGZtXoskGBZ1RJ@ecommifycluster.dbpeigv.mongodb.net/?appName=EcommifyCluster"
-SUPABASE_URL  = "postgresql://postgres.aklzgzygjfxznpkkytae:YOUR_SUPABASE_PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+SUPABASE_URL  = "postgresql://postgres:5pThc9CWW1rD0kID@db.aklzgzygjfxznpkkytae.supabase.co:5432/postgres"
 OUTPUT_DIR    = r"C:\Users\Yuliet Rojas\OneDrive - Universidad de la Sabana\Diseño y Optimización BD\Unidad 5\evidencia_guia6"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -236,10 +236,9 @@ def main():
         print(f"NIVEL DE CONCURRENCIA: {concurrencia} usuarios")
         print(f"{'='*40}")
 
-        # Solo MongoDB (Supabase requiere password real)
-        # Para PostgreSQL: reemplazar SUPABASE_URL con la URL real y descomentar
-        # res_pg = test_postgresql(concurrencia)
-        # if res_pg: todos_los_resultados.append(res_pg)
+        res_pg = test_postgresql(concurrencia)
+        if res_pg:
+            todos_los_resultados.append(res_pg)
 
         res_mongo = test_mongodb(concurrencia)
         if res_mongo:

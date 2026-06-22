@@ -87,49 +87,60 @@ El ETL no es en tiempo real: las métricas de `computed_metrics` (avg_price, tot
 
 ### 3.2 Resultados — MongoDB Atlas M0
 
-| Usuarios | QPS | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | Errores |
-|---|---|---|---|---|---|---|
-| 1 | 18.4 | 54.2 | 48.1 | 112.3 | 187.6 | 0% |
-| 5 | 42.7 | 116.9 | 98.4 | 298.7 | 421.2 | 0% |
-| 10 | 51.3 | 194.6 | 167.3 | 512.8 | 734.1 | 2.1% |
-| 20 | 48.9 | 408.3 | 312.7 | 1,124.5 | 1,847.3 | 8.4% |
+*Datos reales obtenidos con `load_test.py` — `concurrent.futures.ThreadPoolExecutor`, 10 queries por usuario, 3 tipos de query (find por categoría, top rated, aggregation pipeline).*
+
+| Usuarios | QPS | Avg (ms) | P95 (ms) | P99 (ms) | Errores |
+|---|---|---|---|---|---|
+| 1 | 6.49 | 153.85 | 144.01 | 1,065.45 | 0% |
+| 5 | 34.47 | 143.42 | 140.25 | 937.93 | 0% |
+| 10 | 71.16 | 138.79 | 144.83 | 896.93 | 0% |
+| 20 | 94.38 | 206.07 | 543.80 | 938.87 | 0% |
 
 **Observaciones:**
-- El throughput se estabiliza entre 48-53 QPS a partir de 10 usuarios — comportamiento típico del límite de conexiones de M0 (100 max)
-- P95 se multiplica por 10 entre 1 y 20 usuarios (112ms → 1,124ms) — degradación no lineal
-- Errores a 20 usuarios son timeouts de socket, no errores de lógica
-- La query `aggregation_pipeline` domina la latencia: 3-4x más lenta que las `find_*`
+- Throughput escala casi linealmente de 1→20 usuarios (6.49 → 94.38 QPS) — el motor MongoDB gestiona bien la concurrencia en el rango probado
+- Latencia promedio mejora de 1 a 10 usuarios (153ms → 138ms) por efecto de connection pool warming — el cliente reutiliza conexiones ya establecidas
+- A 20 usuarios el avg sube a 206ms y P95 a 543ms — inicio de contención por límite de M0 (shared cluster)
+- P99 elevado en 1 usuario (1,065ms) refleja el costo de la primera conexión en frío al cluster — queries siguientes son más rápidas
+- **0% de errores** en todos los niveles — M0 gestiona la cola sin rechazar conexiones en este rango
 
 ### 3.3 Resultados — PostgreSQL / Supabase
 
-| Usuarios | QPS | Avg (ms) | P50 (ms) | P95 (ms) | P99 ms) | Errores |
-|---|---|---|---|---|---|---|
-| 1 | 24.1 | 41.5 | 36.2 | 89.4 | 143.7 | 0% |
-| 5 | 67.3 | 74.2 | 62.8 | 187.3 | 291.4 | 0% |
-| 10 | 89.6 | 111.7 | 88.4 | 312.6 | 487.2 | 0.3% |
-| 20 | 94.2 | 215.3 | 168.7 | 643.8 | 912.5 | 1.8% |
+*Nota: La conexión al pooler de Supabase (puerto 6543) retornó error DNS durante las pruebas (`ENOTFOUND tenant/user`). Se usa la conexión directa al host `db.aklzgzygjfxznpkkytae.supabase.co:5432` para las pruebas definitivas. Los resultados de PostgreSQL están pendientes de confirmación con la URL corregida en `load_test.py`.*
 
-**Observaciones:**
-- PostgreSQL muestra mejor throughput máximo (94 QPS vs 51 QPS de MongoDB) para queries transaccionales simples
-- El índice BRIN en `order_purchase_timestamp` reduce a casi cero el costo de las queries `orders_by_period` (seq scan evitado)
-- La query `revenue_by_category` (JOIN + GROUP BY) es 3x más lenta que las simples — presión en el planificador con concurrencia alta
-- Supabase free tier permite ~60 conexiones simultáneas antes de pooling — limitante crítico
+**Resultados proyectados (basados en EXPLAIN ANALYZE previos de Guía 5 y comportamiento típico de Supabase free tier):**
+
+| Usuarios | QPS | Avg (ms) | P95 (ms) | P99 (ms) | Errores |
+|---|---|---|---|---|---|
+| 1 | ~20-25 | ~35-50 | ~80-110 | ~140-180 | 0% |
+| 5 | ~55-70 | ~70-90 | ~180-220 | ~280-350 | 0% |
+| 10 | ~75-95 | ~100-130 | ~300-400 | ~480-600 | <1% |
+| 20 | ~85-100 | ~200-260 | ~600-800 | ~900-1,200 | ~2-5% |
+
+**Observaciones (con datos parciales de Guía 5):**
+- El índice BRIN en `order_purchase_timestamp` elimina el seq scan en `orders_by_period` — evidencia en `explain_despues.json`
+- `revenue_by_category` (JOIN `order_items` + `products` + GROUP BY) tiene mayor costo que queries simples — hash join visible en EXPLAIN
+- Supabase free tier: ~60 conexiones simultáneas máx antes de error de pool — límite crítico para 20+ usuarios
+- La query más rápida históricamente: `simple_orders` con filtro por status (~15-30ms con índice)
 
 ### 3.4 Análisis de Degradación
 
 ```
-Degradación de latencia (Avg ms) por nivel de carga
-─────────────────────────────────────────────────────
-                1 usuario    5 usuarios   10 usuarios   20 usuarios
-PostgreSQL:      41.5 ms      74.2 ms      111.7 ms      215.3 ms
-MongoDB:         54.2 ms     116.9 ms      194.6 ms      408.3 ms
+Degradación de latencia (Avg ms) por nivel de carga — datos reales MongoDB
+────────────────────────────────────────────────────────────────────────────
+                  1 usuario    5 usuarios   10 usuarios   20 usuarios
+MongoDB (real):   153.85 ms    143.42 ms    138.79 ms     206.07 ms
+PostgreSQL:       ~40-50 ms    ~70-90 ms    ~100-130 ms   ~200-260 ms (proyectado)
 
-Factor de degradación (20x vs 1x usuarios):
-  PostgreSQL: ×5.2  (mejor comportamiento bajo concurrencia)
-  MongoDB:    ×7.5  (más sensible a concurrencia en M0 shared)
+Factor de degradación MongoDB (20 vs 1 usuario): ×1.34
+  → Degradación sorprendentemente baja — el pool de conexiones MongoDB M0
+    absorbe la concurrencia mejor de lo esperado en el rango 1-20 usuarios.
+
+Throughput (QPS):
+  1u → 6.49 QPS  →  5u → 34.47 QPS  →  10u → 71.16 QPS  →  20u → 94.38 QPS
+  Escala ~14.5x con 20x usuarios → eficiencia de paralelismo: ~72%
 ```
 
-**Interpretación crítica:** MongoDB M0 es compartido entre miles de clusters. Bajo alta concurrencia, la latencia aumenta por contención de recursos externos (CPU compartida del cluster), no por ineficiencia del motor. En Atlas M10+ (dedicado), el comportamiento de MongoDB sería comparable o mejor que PostgreSQL para queries complejas de documentos.
+**Interpretación crítica:** El comportamiento de MongoDB en este rango es mejor del esperado para un M0. La latencia promedio baja de 1 a 10 usuarios (153ms → 138ms) porque el connection pool se calienta — las primeras queries pagan el overhead de TLS handshake con Atlas. A partir de 20 usuarios, la P95 sube a 543ms — señal de que el shared cluster empieza a competir por CPU. La P99 alta en todos los niveles (937-1065ms) refleja el costo de la query `aggregation_pipeline` que hace `$group` sobre 32,951 documentos.
 
 ---
 
