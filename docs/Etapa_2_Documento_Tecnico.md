@@ -289,7 +289,7 @@ SELECT * FROM products WHERE product_id > 'a046d4d3...' ORDER BY product_id LIMI
 | `seller_state_buckets` | Bucket | — | Vendedores agrupados por estado |
 | `geolocation_points` | Embedded | 1,000,163 | Puntos geoespaciales con índice 2dsphere |
 | `catalogo_enriquecido` | Computed + Attribute | 32,951 | Catálogo con métricas precalculadas (cargado vía ETL) |
-| `resumen_reviews` | Bucket | ~20,000 | Reviews en grupos de 5 por producto |
+| `resumen_reviews` | Bucket | 2,000 | Reviews en grupos de 5 por producto |
 
 #### Patrones de diseño implementados
 
@@ -299,7 +299,7 @@ SELECT * FROM products WHERE product_id > 'a046d4d3...' ORDER BY product_id LIMI
 | **Attribute** | `products_catalog` | `attributes` como array `[{k, v}]` | Un solo índice para N dimensiones variables |
 | **Extended Reference** | `orders_analytics` | Datos mínimos del cliente (`state`, `city`) embebidos en la orden | Evita `$lookup` en queries analíticas frecuentes |
 | **Computed** | `catalogo_enriquecido` | `computed_metrics` precalculadas (avg_price, avg_rating, units_sold) | Sin recalcular en cada query |
-| **Bucket** | `resumen_reviews` | Grupos de 5 reviews por documento | Reduce documentos individuales de 99K a ~20K |
+| **Bucket** | `resumen_reviews` | Grupos de 5 reviews por documento | 2,000 buckets cargados (subset de 5,000 reviews con comentario) |
 
 ### 4.2 JSON Schema Validation
 
