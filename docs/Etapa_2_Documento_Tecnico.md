@@ -277,81 +277,65 @@ SELECT * FROM products WHERE product_id > 'a046d4d3...' ORDER BY product_id LIMI
 
 ## 4. Implementación MongoDB Atlas
 
-### 4.1 Modelado de Documentos
+### 4.1 Colecciones y Modelado de Documentos
 
-**Base de datos:** `ecommify_analytics`  
-**Colecciones:** `catalogo_enriquecido` (32,951 docs) · `resumen_reviews` (Bucket Pattern)
+**Base de datos:** `ecommify` · **Cluster:** Atlas M0 (us-east-1)
 
-#### Documento típico — catalogo_enriquecido
-```json
-{
-  "_id": ObjectId("..."),
-  "product_id": "abc123def456",
-  
-  "category_translations": {
-    "pt": "cama_mesa_banho",
-    "en": "bed_bath_table"
-  },
-  
-  "photos_qty": 4,
-  
-  "specifications": [
-    { "k": "weight_g",  "v": 2500 },
-    { "k": "length_cm", "v": 45 },
-    { "k": "height_cm", "v": 20 },
-    { "k": "width_cm",  "v": 30 }
-  ],
-  
-  "computed_metrics": {
-    "total_units_sold": 47,
-    "average_rating": 4.3,
-    "avg_price": 89.90
-  }
-}
-```
+| Colección | Patrón principal | Documentos | Propósito |
+|---|---|---|---|
+| `products_catalog` | Attribute + Embedded | 32,951 | Catálogo de productos con dimensiones variables |
+| `order_reviews` | Referenced | 99,224 | Reviews referenciadas por `order_id` |
+| `orders_analytics` | Extended Reference | 99,224 | Órdenes analíticas con datos mínimos embebidos |
+| `seller_state_buckets` | Bucket | — | Vendedores agrupados por estado |
+| `geolocation_points` | Embedded | 1,000,163 | Puntos geoespaciales con índice 2dsphere |
+| `catalogo_enriquecido` | Computed + Attribute | 32,951 | Catálogo con métricas precalculadas (cargado vía ETL) |
+| `resumen_reviews` | Bucket | ~20,000 | Reviews en grupos de 5 por producto |
 
 #### Patrones de diseño implementados
 
 | Patrón | Colección | Implementación | Beneficio |
 |---|---|---|---|
-| **Embedded** | catalogo_enriquecido | `category_translations` dentro del documento | Elimina JOIN para obtener traducción |
-| **Attribute** | catalogo_enriquecido | `specifications` como array `[{k, v}]` | Permite indexar N dimensiones variables con un solo índice |
-| **Computed** | catalogo_enriquecido | `computed_metrics` precalculadas al cargar | Evita recalcular avg_price y avg_rating en cada query |
-| **Bucket** | resumen_reviews | Grupos de 5 reviews por documento | Reduce de ~99K documentos individuales a ~20K buckets |
-
-#### Documento — resumen_reviews (Bucket Pattern)
-```json
-{
-  "product_id": "abc123def456",
-  "bucket_index": 0,
-  "count": 5,
-  "reviews": [
-    {
-      "review_score": 5,
-      "review_comment_title": "Excelente",
-      "review_comment_message": "Llegó en perfectas condiciones"
-    }
-  ]
-}
-```
+| **Embedded** | `products_catalog` | `category` con `name_pt` y `name_en` dentro del documento | Elimina JOIN para traducción |
+| **Attribute** | `products_catalog` | `attributes` como array `[{k, v}]` | Un solo índice para N dimensiones variables |
+| **Extended Reference** | `orders_analytics` | Datos mínimos del cliente (`state`, `city`) embebidos en la orden | Evita `$lookup` en queries analíticas frecuentes |
+| **Computed** | `catalogo_enriquecido` | `computed_metrics` precalculadas (avg_price, avg_rating, units_sold) | Sin recalcular en cada query |
+| **Bucket** | `resumen_reviews` | Grupos de 5 reviews por documento | Reduce documentos individuales de 99K a ~20K |
 
 ### 4.2 JSON Schema Validation
 
+#### products_catalog
 ```javascript
-db.createCollection("catalogo_enriquecido", {
+db.createCollection('products_catalog', {
   validator: {
     $jsonSchema: {
-      bsonType: "object",
-      required: ["product_id", "computed_metrics"],
+      bsonType: 'object',
+      required: ['product_id', 'category', 'attributes', 'dimensions'],
       properties: {
-        product_id: { bsonType: "string" },
-        computed_metrics: {
-          bsonType: "object",
-          required: ["total_units_sold", "average_rating", "avg_price"],
+        product_id: { bsonType: 'string' },
+        category: {
+          bsonType: 'object',
+          required: ['name_pt'],
           properties: {
-            total_units_sold: { bsonType: "int", minimum: 0 },
-            average_rating:   { bsonType: "double", minimum: 0, maximum: 5 },
-            avg_price:        { bsonType: "double", minimum: 0 }
+            name_pt: { bsonType: 'string' },
+            name_en: { bsonType: ['string', 'null'] }
+          }
+        },
+        attributes: {
+          bsonType: 'array',
+          items: {
+            bsonType: 'object',
+            required: ['k', 'v'],
+            properties: { k: { bsonType: 'string' }, v: {} }
+          }
+        },
+        dimensions: {
+          bsonType: 'object',
+          properties: {
+            weight_g:   { bsonType: ['int', 'long', 'double', 'null'] },
+            length_cm:  { bsonType: ['int', 'long', 'double', 'null'] },
+            height_cm:  { bsonType: ['int', 'long', 'double', 'null'] },
+            width_cm:   { bsonType: ['int', 'long', 'double', 'null'] },
+            volume_cm3: { bsonType: ['int', 'long', 'double', 'null'] }
           }
         }
       }
@@ -360,188 +344,317 @@ db.createCollection("catalogo_enriquecido", {
 });
 ```
 
-### 4.3 Índices MongoDB (Regla ESR)
-
-La **Regla ESR** (Equality → Sort → Range) maximiza el uso del índice: los campos de igualdad van primero, luego los de ordenamiento, luego los de rango.
-
+#### order_reviews
 ```javascript
-// 1. COMPUESTO ESR — query principal de catálogo
-db.catalogo_enriquecido.createIndex(
-  { "category_translations.en": 1,
-    "computed_metrics.avg_price": 1,
-    "computed_metrics.average_rating": 1 },
-  { name: "idx_category_price_rating_ESR" }
-)
-
-// 2. PARCIAL — solo productos con rating alto (filtra ~80% de docs)
-db.catalogo_enriquecido.createIndex(
-  { "computed_metrics.average_rating": -1 },
-  { partialFilterExpression: { "computed_metrics.average_rating": { $gte: 4.0 } },
-    name: "idx_high_rating_partial" }
-)
-
-// 3. TEXTO — full-text search en categorías
-db.catalogo_enriquecido.createIndex(
-  { "category_translations.pt": "text", "category_translations.en": "text" },
-  { name: "idx_category_text", default_language: "portuguese" }
-)
-
-// 4. ATTRIBUTE PATTERN — buscar por dimensión específica
-db.catalogo_enriquecido.createIndex(
-  { "specifications.k": 1, "specifications.v": 1 },
-  { name: "idx_specifications_kv_ESR" }
-)
-
-// 5. BUCKET ESR — acceso a reviews por producto
-db.resumen_reviews.createIndex(
-  { "product_id": 1, "bucket_index": 1, "count": 1 },
-  { name: "idx_reviews_product_bucket_ESR" }
-)
-
-// 6. PARCIAL — solo reviews negativas (score ≤ 2)
-db.resumen_reviews.createIndex(
-  { "product_id": 1 },
-  { partialFilterExpression: { "reviews.review_score": { $lte: 2 } },
-    name: "idx_negative_reviews_partial" }
-)
+db.createCollection('order_reviews', {
+  validator: {
+    $jsonSchema: {
+      bsonType: 'object',
+      required: ['review_id', 'order_id', 'review_score'],
+      properties: {
+        review_id:    { bsonType: 'string' },
+        order_id:     { bsonType: 'string' },
+        review_score: { bsonType: ['int', 'long'], minimum: 1, maximum: 5 },
+        review_comment_title:   { bsonType: ['string', 'null'] },
+        review_comment_message: { bsonType: ['string', 'null'] },
+        review_creation_date:   { bsonType: ['date', 'null'] },
+        sentiment_hint:         { bsonType: ['string', 'null'] }
+      }
+    }
+  }
+});
 ```
 
-#### Evidencia .explain() — antes vs después
+#### orders_analytics (Extended Reference Pattern)
+```javascript
+db.createCollection('orders_analytics', {
+  validator: {
+    $jsonSchema: {
+      bsonType: 'object',
+      required: ['order_id', 'status', 'purchase_ts', 'purchase_year_month', 'customer'],
+      properties: {
+        order_id:            { bsonType: 'string' },
+        status:              { bsonType: 'string' },
+        purchase_ts:         { bsonType: 'date' },
+        purchase_year_month: { bsonType: 'string' },
+        customer: {
+          bsonType: 'object',
+          required: ['customer_id', 'state', 'city'],
+          properties: {
+            customer_id: { bsonType: 'string' },
+            state:       { bsonType: 'string' },
+            city:        { bsonType: 'string' }
+          }
+        },
+        payment_summary: {
+          bsonType: 'object',
+          properties: {
+            total_value:      { bsonType: ['double', 'decimal', 'int', 'long', 'null'] },
+            payment_types:    { bsonType: 'array' },
+            max_installments: { bsonType: ['int', 'long', 'null'] }
+          }
+        }
+      }
+    }
+  }
+});
+```
 
-| Métrica | ANTES (sin índices) | DESPUÉS (idx_category_price_rating_ESR) |
+### 4.3 Índices MongoDB
+
+La **Regla ESR** (Equality → Sort → Range) maximiza el uso del índice.
+
+#### Índices compuestos (ESR)
+```javascript
+// orders_analytics — queries analíticas regionales por estado y período
+db.orders_analytics.createIndex(
+  { 'customer.state': 1, status: 1, purchase_ts: -1 },
+  { name: 'idx_orders_state_status_purchase_esr' }
+);
+
+db.orders_analytics.createIndex(
+  { purchase_year_month: 1, 'customer.state': 1, 'payment_summary.total_value': -1 },
+  { name: 'idx_orders_month_state_value' }
+);
+
+// products_catalog — búsqueda por categoría + dimensiones
+db.products_catalog.createIndex(
+  { 'category.name_en': 1, 'dimensions.weight_g': 1, 'metrics.photos_qty': -1 },
+  { name: 'idx_products_category_weight_photos' }
+);
+
+// catalogo_enriquecido — query principal del catálogo (ESR)
+db.catalogo_enriquecido.createIndex(
+  { 'category_translations.en': 1, 'computed_metrics.avg_price': 1, 'computed_metrics.average_rating': 1 },
+  { name: 'idx_category_price_rating_ESR' }
+);
+```
+
+#### Índices parciales
+```javascript
+// Solo reviews negativas con comentario (filtra ~60% de documentos)
+db.order_reviews.createIndex(
+  { review_score: 1, review_creation_date: -1 },
+  {
+    name: 'idx_low_score_reviews_with_comment',
+    partialFilterExpression: {
+      review_score: { $lte: 3 },
+      review_comment_message: { $exists: true, $type: 'string' }
+    }
+  }
+);
+
+// Solo órdenes entregadas — subset más consultado analíticamente
+db.orders_analytics.createIndex(
+  { purchase_ts: -1, 'customer.state': 1 },
+  {
+    name: 'idx_delivered_orders_recent_by_state',
+    partialFilterExpression: { status: 'delivered' }
+  }
+);
+```
+
+#### Índices de texto (full-text search)
+```javascript
+// Reviews — búsqueda en título y comentario en portugués
+db.order_reviews.createIndex(
+  { review_comment_title: 'text', review_comment_message: 'text' },
+  { name: 'idx_reviews_text_search', default_language: 'portuguese' }
+);
+
+// Catálogo — búsqueda por nombre de categoría y atributos
+db.products_catalog.createIndex(
+  { 'category.name_en': 'text', 'category.name_pt': 'text', 'attributes.k': 'text' },
+  { name: 'idx_products_text_search', default_language: 'portuguese' }
+);
+```
+
+#### Índice geoespacial
+```javascript
+// 2dsphere para queries de proximidad entre compradores y vendedores
+db.geolocation_points.createIndex(
+  { location: '2dsphere' },
+  { name: 'idx_geolocation_points_2dsphere' }
+);
+```
+
+#### Evidencia .explain() — antes vs después (catalogo_enriquecido)
+
+| Métrica | ANTES (sin índices) | DESPUÉS (`idx_category_price_rating_ESR`) |
 |---|---|---|
 | Stage | **COLLSCAN** | **IXSCAN** |
-| `executionTimeMillis` | 24 ms | 6 ms |
+| `executionTimeMillis` | **24 ms** | **6 ms** |
 | `totalDocsExamined` | 32,951 | 1,102 |
 | `totalKeysExamined` | 0 | 1,102 |
-| Mejora en tiempo | — | **75% más rápido** |
-| Mejora en documentos | — | **−96.7%** |
+| Mejora tiempo | — | **75% más rápido** |
+| Mejora documentos | — | **−96.7%** |
 
-Archivos de evidencia: `evidence/mongodb/explain_antes.json` · `evidence/mongodb/explain_despues.json`
+*Archivos: `evidence/mongodb/explain_antes.json` · `evidence/mongodb/explain_despues.json`*
 
-### 4.4 Pipeline de Agregación (6 stages)
+### 4.4 Pipelines de Agregación
+
+#### Pipeline 1 — Revenue por estado y método de pago (8 stages)
+
+Colección `orders_analytics` — identifica los estados con mayor facturación y su score de calidad.
 
 ```javascript
-db.catalogo_enriquecido.aggregate([
-
-  // Stage 1: $match — filtrado temprano, activa idx_category_price_rating_ESR
-  { $match: {
-      "computed_metrics.total_units_sold": { $gt: 0 },
-      "category_translations.en": { $nin: [null, "", "nan"] }
-  }},
-
-  // Stage 2: $project — proyección temprana reduce payload antes del $group
-  { $project: {
-      _id: 0,
-      product_id: 1,
-      category_en:  "$category_translations.en",
-      units_sold:   "$computed_metrics.total_units_sold",
-      avg_rating:   "$computed_metrics.average_rating",
-      avg_price:    "$computed_metrics.avg_price"
-  }},
-
-  // Stage 3: $group — agrupación por categoría
-  { $group: {
-      _id:                  "$category_en",
-      total_products:       { $sum: 1 },
-      total_units:          { $sum: "$units_sold" },
-      avg_category_price:   { $avg: "$avg_price" },
-      avg_category_rating:  { $avg: "$avg_rating" }
-  }},
-
-  // Stage 4: $addFields — score compuesto de rendimiento
+db.orders_analytics.aggregate([
+  { $match: { status: 'delivered',
+      purchase_ts: { $gte: ISODate('2017-01-01'), $lt: ISODate('2018-01-01') } } },
+  { $lookup: { from: 'order_reviews', localField: 'order_id',
+               foreignField: 'order_id', as: 'reviews' } },
+  { $unwind: { path: '$reviews', preserveNullAndEmptyArrays: true } },
   { $addFields: {
-      performance_score: {
-        $round: [
-          { $add: [
-              { $multiply: ["$avg_category_rating", 20] },
-              { $divide:   ["$total_units", 10] }
-          ]},
-          2
-        ]
-      }
+      purchase_month: { $dateTrunc: { date: '$purchase_ts', unit: 'month' } },
+      payment_total_safe: { $ifNull: ['$payment_summary.total_value', 0] }
   }},
-
-  // Stage 5: $sort
-  { $sort: { performance_score: -1, total_units: -1 } },
-
-  // Stage 6: $facet — análisis multidimensional en una sola pasada
+  { $group: {
+      _id: { state: '$customer.state', month: '$purchase_month' },
+      total_orders:     { $sum: 1 },
+      total_revenue:    { $sum: '$payment_total_safe' },
+      avg_review_score: { $avg: '$reviews.review_score' }
+  }},
+  { $project: { _id: 0, state: '$_id.state', month: '$_id.month',
+      total_orders: 1,
+      total_revenue:    { $round: ['$total_revenue', 2] },
+      avg_review_score: { $round: ['$avg_review_score', 2] } } },
+  { $sort: { total_revenue: -1 } },
   { $facet: {
-      top_10_categorias: [
-        { $limit: 10 },
-        { $project: {
-            _id: 0,
-            categoria:   "$_id",
-            productos:   "$total_products",
-            unidades:    "$total_units",
-            precio_prom: { $round: ["$avg_category_price", 2] },
-            rating_prom: { $round: ["$avg_category_rating", 2] },
-            score:       "$performance_score"
-        }}
-      ],
-      estadisticas_globales: [
-        { $group: {
-            _id:               null,
-            total_categorias:  { $sum: 1 },
-            precio_global_avg: { $avg: "$avg_category_price" },
-            rating_global_avg: { $avg: "$avg_category_rating" },
-            total_unidades:    { $sum: "$total_units" }
-        }},
-        { $project: { _id: 0 }}
-      ],
-      categorias_bajo_rendimiento: [
-        { $match: { performance_score: { $lt: 80 } } },
-        { $limit: 5 },
-        { $project: { _id: 0, categoria: "$_id",
-                      score: "$performance_score",
-                      rating_prom: { $round: ["$avg_category_rating", 2] } }}
-      ]
+      top_states: [{ $limit: 10 }],
+      summary: [{ $group: { _id: null,
+          total_revenue: { $sum: '$total_revenue' },
+          total_orders:  { $sum: '$total_orders' },
+          avg_score_global: { $avg: '$avg_review_score' } } }]
   }}
-
 ], { allowDiskUse: true })
 ```
 
-#### Resultados del pipeline
+#### Pipeline 2 — Calidad de reviews negativas (5 stages)
+
+Colección `order_reviews` — usa el índice parcial `idx_low_score_reviews_with_comment`.
+
+```javascript
+db.order_reviews.aggregate([
+  { $match: { review_score: { $lte: 3 },
+              review_comment_message: { $exists: true, $type: 'string' } } },
+  { $addFields: { comment_length: { $strLenCP: '$review_comment_message' } } },
+  { $bucket: {
+      groupBy: '$review_score',
+      boundaries: [1, 2, 3, 4],
+      default: 'other',
+      output: {
+        total_reviews:      { $sum: 1 },
+        avg_comment_length: { $avg: '$comment_length' }
+      }
+  }},
+  { $sort: { _id: 1 } }
+], { allowDiskUse: true })
+```
+
+#### Pipeline 3 — Búsqueda analítica de catálogo por categoría (6 stages)
+
+Colección `products_catalog` — usa `$unwind` sobre el Attribute Pattern.
+
+```javascript
+db.products_catalog.aggregate([
+  { $match: { 'category.name_en': { $exists: true, $ne: null } } },
+  { $unwind: '$attributes' },
+  { $match: { 'attributes.k': { $in: ['weight_g', 'volume_cm3', 'photos_qty'] } } },
+  { $group: {
+      _id: '$category.name_en',
+      product_count: { $sum: 1 },
+      avg_weight:    { $avg: '$dimensions.weight_g' },
+      avg_volume:    { $avg: '$dimensions.volume_cm3' }
+  }},
+  { $project: { _id: 0, category: '$_id', product_count: 1,
+      avg_weight: { $round: ['$avg_weight', 2] },
+      avg_volume: { $round: ['$avg_volume', 2] } } },
+  { $sort: { product_count: -1 } },
+  { $limit: 15 }
+], { allowDiskUse: true })
+```
+
+#### Pipeline 4 — Performance score de categorías (6 stages, con $facet)
+
+Colección `catalogo_enriquecido` — ejecutado y medido con `run_pipeline.py`.
+
+```javascript
+db.catalogo_enriquecido.aggregate([
+  { $match: { "computed_metrics.total_units_sold": { $gt: 0 },
+              "category_translations.en": { $nin: [null, "", "nan"] } } },
+  { $project: { _id: 0, category_en: "$category_translations.en",
+      units_sold: "$computed_metrics.total_units_sold",
+      avg_rating: "$computed_metrics.average_rating",
+      avg_price:  "$computed_metrics.avg_price" } },
+  { $group: { _id: "$category_en",
+      total_products: { $sum: 1 }, total_units: { $sum: "$units_sold" },
+      avg_category_price: { $avg: "$avg_price" }, avg_category_rating: { $avg: "$avg_rating" } } },
+  { $addFields: { performance_score: { $round: [{ $add: [
+      { $multiply: ["$avg_category_rating", 20] },
+      { $divide: ["$total_units", 10] } ] }, 2] } } },
+  { $sort: { performance_score: -1 } },
+  { $facet: {
+      top_10_categorias: [{ $limit: 10 }],
+      estadisticas_globales: [{ $group: { _id: null,
+          total_categorias: { $sum: 1 }, total_unidades: { $sum: "$total_units" },
+          precio_global_avg: { $avg: "$avg_category_price" },
+          rating_global_avg: { $avg: "$avg_category_rating" } } }]
+  }}
+], { allowDiskUse: true })
+```
+
+**Resultados reales (ejecutado con `run_pipeline.py`):**
 
 | Métrica | Resultado |
 |---|---|
-| Total categorías analizadas | 71 |
+| Total categorías | 71 |
 | Total unidades vendidas | 111,023 |
 | Precio promedio global | $170.10 |
 | Rating promedio global | 4.02 |
-| **Top categoría (score)** | `bed_bath_table` — 1,188.30 |
-| Tiempo de ejecución | ~120 ms |
+| Top categoría (score) | `bed_bath_table` — 1,188.30 |
 
-Archivo de evidencia: `evidence/mongodb/pipeline_resultado.json`
+*Evidencia: `evidence/mongodb/pipeline_resultado.json`*
 
 ### 4.5 Sharding — Diseño Teórico
 
-*Atlas M0 no permite sharding real. Este diseño aplica para M10+.*
+*Atlas M0 no permite sharding. Este diseño aplica para Atlas M10+.*
+
+#### Shard key — orders_analytics
 
 ```javascript
-// Colección: catalogo_enriquecido
-// Shard key: categoría (alta cardinalidad) + product_id hashed (distribución uniforme)
-sh.shardCollection("ecommify_analytics.catalogo_enriquecido", {
-  "category_translations.en": 1,
-  "product_id": "hashed"
-})
-
-// Colección: resumen_reviews
-// Shard key: product_id hashed — acceso siempre por product_id
-sh.shardCollection("ecommify_analytics.resumen_reviews", {
-  "product_id": "hashed"
-})
+sh.enableSharding("ecommify")
+sh.shardCollection(
+  "ecommify.orders_analytics",
+  { "customer.state": 1, "purchase_year_month": 1, "order_id": "hashed" }
+)
 ```
 
-**Replica Set — configuración recomendada:**
+**Justificación de la shard key:**
+- `customer.state` — dirige queries analíticas regionales al shard correcto
+- `purchase_year_month` — segmenta por ventana temporal para evitar hot spots en el shard del período actual
+- `order_id` hashed — distribuye escrituras cuando un estado concentra alto volumen (SP representa ~42% de las órdenes de Brasil)
 
-| Parámetro | Valor | Justificación |
-|---|---|---|
-| Topología | 1 Primary + 2 Secondaries | Quorum para failover automático |
-| Write Concern crítico | `{w: "majority", j: true}` | Escrituras de catálogo confirmadas en disco |
-| Write Concern analítico | `{w: 1}` | Reviews — lag de replicación aceptable |
-| Read Preference analítico | `secondaryPreferred` | Descarga queries de lectura del primary |
-| Read Concern | `"majority"` para reportes · `"local"` para tiempo real | Balance consistencia/latencia |
+#### Shard key — products_catalog
+
+```javascript
+sh.shardCollection(
+  "ecommify.products_catalog",
+  { "category.name_en": 1, "product_id": "hashed" }
+)
+```
+
+### 4.6 Replica Set y Read/Write Concern
+
+**Topología:** 1 Primary + 2 Secondaries (Primary en región principal, Secondary 1 en misma región, Secondary 2 en región alternativa para tolerancia a fallos)
+
+| Operación | Read Concern | Write Concern | Justificación |
+|---|---|---|---|
+| Carga histórica CSV | `local` | `w:1` | Prioriza velocidad de importación |
+| Registro de orden nueva | `majority` | `majority` | Requiere consistencia transaccional |
+| Pagos | `majority` | `majority` | Información crítica del negocio |
+| Dashboard analítico | `local` | N/A | Prioriza baja latencia de lectura |
+| Reviews | `local` | `w:1` | Escritura de menor criticidad |
+| Conciliación financiera | `majority` | `majority` | Debe leer datos confirmados |
 
 ---
 
