@@ -607,13 +607,15 @@ Factor de degradación latencia Avg (20u vs 1u): ×1.34
 | Consistencia | ACID completo | ACID multi-doc desde 4.0, eventual por default | PostgreSQL para pagos |
 | Escalabilidad horizontal | Limitada (Citus/particionamiento) | Sharding nativo | MongoDB para >1 TB |
 | Queries analíticas | SQL maduro, window functions, CTEs | Pipeline de agregación | PostgreSQL para ad-hoc |
-| Throughput (tier actual) | ~85-95 QPS estimado | **94.38 QPS medido** | Empate en rango probado |
+| Throughput (tier actual) | No medido¹ | **94.38 QPS medido** | Ver nota ¹ |
 | JOINs complejos | Nativo, optimizador maduro | `$lookup` — más lento | PostgreSQL |
 | Búsqueda de texto | pg_trgm + tsvector | Text index + Atlas Search (Lucene) | MongoDB con Atlas Search |
 | Monitoreo built-in | pg_stat_statements | Performance Advisor + Atlas Charts | MongoDB (mejor UX) |
 | Backups automáticos | Supabase: daily en free tier | Atlas: no en M0 | PostgreSQL en producción |
 | Schema evolution | ALTER TABLE (puede bloquear) | Sin schema obligatorio | MongoDB para cambios frecuentes |
 | Índices especializados | B-tree, GIN, GiST, BRIN, Hash | Compuesto, texto, geo, hashed, wildcard | Empate (dominios distintos) |
+
+> **¹ Nota:** El throughput de PostgreSQL no fue medido con `load_test.py` porque el pooler de Supabase free tier (`aws-1-us-east-1.pooler.supabase.com:6543`) rechazó la autenticación durante las pruebas de carga automatizadas. Las optimizaciones de queries sí están medidas con `EXPLAIN (ANALYZE, BUFFERS)` — ver Sección 5.3.
 
 ---
 
