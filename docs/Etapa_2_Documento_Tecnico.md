@@ -710,6 +710,17 @@ Factor de degradación latencia Avg (20u vs 1u): ×1.34
   → A partir de 20u, P95 sube de 144 ms a 543 ms — señal de contención shared cluster
 ```
 
+### 5.5 Visualización de Resultados
+
+Las gráficas interactivas de rendimiento están disponibles en:
+
+📊 **[`docs/performance_charts.html`](performance_charts.html)** — Dashboard de rendimiento Ecommify
+
+Incluye:
+- **Gráfica 1 — PostgreSQL:** Barras horizontales en escala logarítmica comparando tiempo antes/después para los 7 escenarios (OPT-1 a OPT-4, IDX-1, IDX-2, PART). Escala log₁₀ necesaria por el rango de 0.085 ms a 3,195 ms.
+- **Gráfica 2 — MongoDB QPS:** Curva de throughput (6.49 → 94.38 QPS) con 4 niveles de concurrencia.
+- **Gráfica 3 — MongoDB Latencia:** Tres percentiles (Avg, P95, P99) mostrando el efecto de calentamiento del connection pool y la saturación progresiva del cluster M0.
+
 ---
 
 ## 6. Análisis Comparativo PostgreSQL vs MongoDB

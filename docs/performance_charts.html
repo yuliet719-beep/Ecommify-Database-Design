@@ -1,0 +1,544 @@
+<title>Ecommify — Rendimiento de Base de Datos</title>
+<style>
+:root {
+  --ground: #F0F4F9;
+  --text: #1C2B3A;
+  --accent: #C84B31;
+  --accent2: #1B6CA8;
+  --accent3: #2E9E5B;
+  --muted: #7A95AD;
+  --grid: #C8D4E3;
+  --surface: #FFFFFF;
+  --border: #D6E0EC;
+  --mono: 'Courier New', Courier, monospace;
+  --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+header {
+  background: var(--text);
+  color: #E8EEF5;
+  padding: 36px 40px 30px;
+}
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+h1 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: #E8EEF5;
+  margin-bottom: 6px;
+}
+.subtitle {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.stats-strip {
+  background: #141F2D;
+  padding: 12px 40px;
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+}
+.stat-val {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: #E8EEF5;
+  letter-spacing: -0.02em;
+}
+.stat-key {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 44px 28px 80px;
+}
+.section { margin-bottom: 52px; }
+.section-header { margin-bottom: 20px; }
+.section-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.section-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 24px;
+}
+canvas { display: block; }
+.legend {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+.legend-swatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.legend-note {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  align-self: center;
+}
+.note {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 14px;
+  line-height: 1.6;
+}
+.dual-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+  letter-spacing: -0.01em;
+}
+@media (max-width: 620px) {
+  .dual-grid { grid-template-columns: 1fr; }
+  header { padding: 28px 20px 24px; }
+  .stats-strip { padding: 12px 20px; gap: 24px; }
+  main { padding: 32px 16px 60px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<header>
+  <div class="eyebrow">Ecommify · Guía 6 · Universidad de la Sabana · Junio 2026</div>
+  <h1>Rendimiento de Base de Datos</h1>
+  <p class="subtitle">
+    Dataset: Brazilian E-Commerce Olist · 99,224 órdenes · 32,951 productos · 71 categorías<br>
+    PostgreSQL/Supabase (transaccional) + MongoDB Atlas M0 (analítico) · Mediciones reales con EXPLAIN ANALYZE y ThreadPoolExecutor
+  </p>
+</header>
+<div class="stats-strip">
+  <div class="stat">
+    <span class="stat-val">×3,412</span>
+    <span class="stat-key">Mejora máxima (PG)</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val">94.38</span>
+    <span class="stat-key">QPS máximos (Mongo)</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val">0%</span>
+    <span class="stat-key">Tasa de error</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val">−96.7%</span>
+    <span class="stat-key">Docs examinados (Mongo)</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val">×315</span>
+    <span class="stat-key">Mejora particionamiento</span>
+  </div>
+</div>
+
+<main>
+
+  <section class="section">
+    <div class="section-header">
+      <div class="section-eyebrow">PostgreSQL — EXPLAIN (ANALYZE, BUFFERS)</div>
+      <div class="section-title">Impacto de optimizaciones de queries, índices y particionamiento</div>
+    </div>
+    <div class="card">
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#C84B31;"></div>
+          Antes de optimización
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#1B6CA8;"></div>
+          Después de optimización
+        </div>
+        <div class="legend-note">Escala logarítmica · 0.01 ms → 10,000 ms</div>
+      </div>
+      <canvas id="pgChart"></canvas>
+      <div class="note">
+        Fuente: <code>postgresql/optimizaciones/results/</code> — equipo Ecommify, Supabase (PostgreSQL 15).
+        Escala log₁₀ necesaria: rango de 0.085 ms (OPT-4 después) a 3,195 ms (OPT-3 antes).
+        El multiplicador de mejora aparece a la derecha de cada par de barras.
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">
+      <div class="section-eyebrow">MongoDB Atlas M0 — load_test.py · ThreadPoolExecutor</div>
+      <div class="section-title">Throughput y latencia bajo usuarios concurrentes · 10 queries/usuario · 0% errores</div>
+    </div>
+    <div class="dual-grid">
+      <div class="card">
+        <div class="chart-title">Throughput — Queries por segundo (QPS)</div>
+        <canvas id="qpsChart"></canvas>
+      </div>
+      <div class="card">
+        <div class="chart-title">Latencia por percentil</div>
+        <div class="legend" style="margin-bottom:12px;">
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#1B6CA8;"></div>Avg
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#2E9E5B;"></div>P95
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#C84B31;"></div>P99
+          </div>
+        </div>
+        <canvas id="latChart"></canvas>
+      </div>
+    </div>
+    <div class="note" style="margin-top:12px;">
+      Queries: find por categoría · top rated (rating ≥ 4.5) · aggregation pipeline ($group + $sort + $limit).
+      P99 elevado en 1 usuario (1,065 ms) = costo de TLS handshake en primera conexión en frío.
+      Eficiencia de escala: ×14.5 throughput con ×20 usuarios → 72% de eficiencia lineal.
+    </div>
+  </section>
+
+</main>
+
+<script>
+const C = {
+  ground: '#F0F4F9', text: '#1C2B3A',
+  red: '#C84B31', blue: '#1B6CA8', green: '#2E9E5B',
+  muted: '#7A95AD', grid: '#C8D4E3', surface: '#FFFFFF',
+  redLight: 'rgba(200,75,49,0.12)', blueLight: 'rgba(27,108,168,0.10)',
+  mono: "'Courier New', Courier, monospace",
+  sans: "-apple-system, 'Segoe UI', system-ui, sans-serif"
+};
+
+const PG = [
+  { label: 'OPT-1', desc: 'JOIN vs subqueries',     before: 1855.952, after: 39.713,  mult: '×46.7' },
+  { label: 'OPT-2', desc: 'Rango sargable',          before: 1022.989, after: 535.048, mult: '×1.9'  },
+  { label: 'OPT-3', desc: 'NOT EXISTS anti-join',    before: 3195.639, after: 35.422,  mult: '×90.2' },
+  { label: 'OPT-4', desc: 'Keyset paginación',        before: 290.068,  after: 0.085,   mult: '×3,412'},
+  { label: 'IDX-1', desc: 'B-tree historial cliente', before: 882.947,  after: 4.737,   mult: '×186' },
+  { label: 'IDX-2', desc: 'B-tree ítems vendedor',   before: 1206.577, after: 11.064,  mult: '×109' },
+  { label: 'PART',  desc: 'Particionamiento RANGE',  before: 748.817,  after: 2.375,   mult: '×315' },
+];
+
+const MONGO = [
+  { users: 1,  qps: 6.49,  avg: 153.85, p95: 144.01, p99: 1065.45 },
+  { users: 5,  qps: 34.47, avg: 143.42, p95: 140.25, p99: 937.93  },
+  { users: 10, qps: 71.16, avg: 138.79, p95: 144.83, p99: 896.93  },
+  { users: 20, qps: 94.38, avg: 206.07, p95: 543.80, p99: 938.87  },
+];
+
+function mkCtx(id, w, h) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, W: w, H: h };
+}
+
+function fmtMs(ms) {
+  if (ms < 1) return ms.toFixed(3) + ' ms';
+  if (ms >= 1000) return (ms / 1000).toFixed(2) + ' s';
+  return Math.round(ms) + ' ms';
+}
+
+// ── PostgreSQL horizontal log-scale bar chart ──────────────────────────────
+function drawPg() {
+  const container = document.getElementById('pgChart').parentElement;
+  const W = container.clientWidth - 48;
+  const ROW_H = 56;
+  const H = PG.length * ROW_H + 56;
+  const { ctx } = mkCtx('pgChart', W, H);
+
+  const LABEL_W = 210;
+  const MULT_W  = 68;
+  const BAR_X   = LABEL_W + 8;
+  const BAR_W   = W - LABEL_W - MULT_W - 16;
+  const BAR_H   = 13;
+  const GAP     = 5;
+
+  const LOG_MIN = Math.log10(0.01);
+  const LOG_MAX = Math.log10(10000);
+  const LOG_SPAN = LOG_MAX - LOG_MIN;
+
+  function toX(ms) {
+    return BAR_X + (Math.log10(Math.max(ms, 0.01)) - LOG_MIN) / LOG_SPAN * BAR_W;
+  }
+
+  // Axis grid lines
+  const DECADES = [0.01, 0.1, 1, 10, 100, 1000, 10000];
+  const AXIS_Y = H - 30;
+  ctx.setLineDash([3, 4]);
+  ctx.lineWidth = 1;
+  DECADES.forEach(ms => {
+    const x = toX(ms);
+    ctx.strokeStyle = C.grid;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, AXIS_Y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Axis labels
+  ctx.font = `10px ${C.mono}`;
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'center';
+  [0.1, 1, 10, 100, 1000].forEach(ms => {
+    const x = toX(ms);
+    const lbl = ms < 1 ? ms + ' ms' : ms >= 1000 ? ms/1000 + ' s' : ms + ' ms';
+    ctx.fillText(lbl, x, H - 10);
+  });
+
+  // Axis baseline
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(BAR_X, AXIS_Y); ctx.lineTo(BAR_X + BAR_W, AXIS_Y); ctx.stroke();
+
+  PG.forEach((d, i) => {
+    const y0 = i * ROW_H + 8;
+
+    // Row label: bold code tag + description
+    ctx.textAlign = 'right';
+    ctx.font = `bold 11px ${C.mono}`;
+    ctx.fillStyle = C.text;
+    ctx.fillText(d.label, LABEL_W - 8, y0 + BAR_H - 2);
+
+    ctx.font = `11px ${C.sans}`;
+    ctx.fillStyle = C.muted;
+    ctx.fillText(d.desc, LABEL_W - 8, y0 + BAR_H + GAP + BAR_H - 2);
+
+    // BEFORE bar (red)
+    const xBefore = toX(d.before);
+    ctx.fillStyle = C.red;
+    ctx.globalAlpha = 0.82;
+    ctx.fillRect(BAR_X, y0, xBefore - BAR_X, BAR_H);
+    ctx.globalAlpha = 1;
+
+    // Value label inside before bar
+    const beforeW = xBefore - BAR_X;
+    if (beforeW > 52) {
+      ctx.font = `10px ${C.mono}`;
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'right';
+      ctx.fillText(fmtMs(d.before), xBefore - 4, y0 + BAR_H - 3);
+    }
+
+    // AFTER bar (blue)
+    const xAfter = toX(d.after);
+    const afterW = xAfter - BAR_X;
+    ctx.fillStyle = C.blue;
+    ctx.fillRect(BAR_X, y0 + BAR_H + GAP, afterW, BAR_H);
+
+    // Value label after bar
+    ctx.font = `10px ${C.mono}`;
+    if (afterW > 52) {
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'right';
+      ctx.fillText(fmtMs(d.after), xAfter - 4, y0 + BAR_H + GAP + BAR_H - 3);
+    } else {
+      ctx.fillStyle = C.blue;
+      ctx.textAlign = 'left';
+      ctx.fillText(fmtMs(d.after), xAfter + 4, y0 + BAR_H + GAP + BAR_H - 3);
+    }
+
+    // Multiplier badge — right column
+    const multX = W - MULT_W + 4;
+    ctx.textAlign = 'left';
+    const isMax = d.mult === '×3,412';
+    ctx.font = `bold ${isMax ? 12 : 13}px ${C.mono}`;
+    ctx.fillStyle = isMax ? C.red : C.text;
+    ctx.fillText(d.mult, multX, y0 + BAR_H + GAP - 1);
+    ctx.font = `9px ${C.mono}`;
+    ctx.fillStyle = C.muted;
+    ctx.fillText('más rápido', multX, y0 + BAR_H + GAP + 10);
+  });
+
+  // Left axis spine
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(BAR_X, 0); ctx.lineTo(BAR_X, AXIS_Y); ctx.stroke();
+}
+
+// ── Line chart helper ──────────────────────────────────────────────────────
+function lineChart(id, series, { maxY, yTicks, yLabel, xData, xLabel }) {
+  const container = document.getElementById(id).parentElement;
+  const W = container.clientWidth - 48;
+  const H = 220;
+  const { ctx } = mkCtx(id, W, H);
+
+  const PL = 50, PR = 14, PT = 14, PB = 36;
+  const cW = W - PL - PR;
+  const cH = H - PT - PB;
+
+  function px(i) { return PL + (i / (xData.length - 1)) * cW; }
+  function py(v) { return PT + cH - (Math.min(v, maxY) / maxY) * cH; }
+
+  // Grid + Y labels
+  ctx.setLineDash([3, 4]);
+  ctx.lineWidth = 1;
+  yTicks.forEach(v => {
+    const y = py(v);
+    ctx.strokeStyle = C.grid;
+    ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + cW, y); ctx.stroke();
+    ctx.font = `10px ${C.mono}`;
+    ctx.fillStyle = C.muted;
+    ctx.textAlign = 'right';
+    ctx.fillText(v, PL - 5, y + 4);
+  });
+  ctx.setLineDash([]);
+
+  // X labels
+  ctx.font = `10px ${C.mono}`;
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'center';
+  xData.forEach((u, i) => {
+    ctx.fillText(u + 'u', px(i), H - 10);
+  });
+
+  // Y axis label (rotated)
+  ctx.save();
+  ctx.translate(12, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = `9px ${C.mono}`;
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'center';
+  ctx.fillText(yLabel, 0, 0);
+  ctx.restore();
+
+  // Axes
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PL, PT); ctx.lineTo(PL, PT + cH); ctx.lineTo(PL + cW, PT + cH);
+  ctx.stroke();
+
+  // Series
+  series.forEach(({ data, color, dash }) => {
+    // Area fill
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.07;
+    ctx.beginPath();
+    data.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
+    ctx.lineTo(px(data.length - 1), PT + cH);
+    ctx.lineTo(px(0), PT + cH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.setLineDash(dash || []);
+    ctx.beginPath();
+    data.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dots + value labels
+    data.forEach((v, i) => {
+      const x = px(i), y = py(v);
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.stroke();
+      // label above
+      if (series.length === 1) {
+        ctx.font = `bold 11px ${C.mono}`;
+        ctx.fillStyle = C.text;
+        ctx.textAlign = 'center';
+        ctx.fillText(v % 1 === 0 ? v : v.toFixed(2), x, y - 10);
+      }
+    });
+  });
+}
+
+// ── MongoDB QPS chart ──────────────────────────────────────────────────────
+function drawQps() {
+  const xData = MONGO.map(d => d.users);
+  lineChart('qpsChart',
+    [{ data: MONGO.map(d => d.qps), color: C.blue }],
+    {
+      maxY: 110,
+      yTicks: [0, 25, 50, 75, 100],
+      yLabel: 'QPS',
+      xData
+    }
+  );
+}
+
+// ── MongoDB Latency chart ──────────────────────────────────────────────────
+function drawLat() {
+  const xData = MONGO.map(d => d.users);
+  lineChart('latChart',
+    [
+      { data: MONGO.map(d => d.avg), color: C.blue,  dash: []     },
+      { data: MONGO.map(d => d.p95), color: C.green, dash: [6, 3] },
+      { data: MONGO.map(d => d.p99), color: C.red,   dash: [3, 3] },
+    ],
+    {
+      maxY: 1200,
+      yTicks: [0, 250, 500, 750, 1000],
+      yLabel: 'ms',
+      xData
+    }
+  );
+}
+
+function drawAll() { drawPg(); drawQps(); drawLat(); }
+window.addEventListener('load', drawAll);
+window.addEventListener('resize', drawAll);
+</script>
